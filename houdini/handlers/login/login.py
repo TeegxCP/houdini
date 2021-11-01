@@ -2,7 +2,8 @@ import asyncio
 import os
 from datetime import datetime, timedelta
 
-import bcrypt
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
 from sqlalchemy import func
 
 from houdini import handlers
@@ -14,6 +15,9 @@ from houdini.data.penguin import Penguin
 from houdini.handlers import XMLPacket
 from houdini.handlers.login import get_server_presence
 from houdini.handlers.play.navigation import get_minutes_played_today
+
+
+passh = PasswordHasher()
 
 
 @handlers.handler(XMLPacket('login'))
@@ -31,8 +35,13 @@ async def handle_login(p, credentials: Credentials):
         p.logger.info(f'{username} failed to login: penguin does not exist')
         return await p.send_error_and_disconnect(100)
 
-    password_correct = await loop.run_in_executor(None, bcrypt.checkpw,
-                                                  password.encode('utf-8'), data.password.encode('utf-8'))
+    password_correct = False
+
+    try:
+        await loop.run_in_executor(None, passh.verify, data.password, password)
+        password_correct = True
+    except VerifyMismatchError:
+        pass
 
     ip_addr = p.peer_name[0]
     flood_key = f'{ip_addr}.flood'
